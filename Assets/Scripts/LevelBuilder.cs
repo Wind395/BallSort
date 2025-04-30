@@ -1,265 +1,164 @@
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
+using UnityEngine.EventSystems;
+using UnityEngine.U2D;
 using UnityEngine.UI;
 
 public class LevelBuilder : MonoBehaviour
 {
 
-    public int tubeCount;
-    public int ballCount;
     public GameObject tubePrefab;
     public GameObject ballPrefab;
-    public Transform[] tubePositions;
-    public GameObject winText;
-    public Button resetButton;
-    public Button undoButton;
+    public List<Sprite> listSprite;
+    public int numTubes;
+    public int numBalls;
+    [SerializeField] private Button randomLevelButton;
+    [SerializeField] private GameObject winText;
+    public RectTransform[] tubePosition;
 
-    private List<Tube> tubes = new List<Tube>();
-    private Tube selectedTube = null;
-    private List<List<Color>> initialState = new List<List<Color>>();
-    private Stack<MoveCommand> moveHistory = new Stack<MoveCommand>();
-    private bool selectedBall = false;
-    private Feature feature;
+    public List<Tube> tubes = new List<Tube>();
+    public List<List<Sprite>> initialState = new List<List<Sprite>>();
 
-    // Start is called once before the first execution of Update after the MonoBehaviour is created
     void Start()
     {
-        feature = GetComponent<Feature>();
-        InitializeGame();
-        resetButton.onClick.AddListener(OnResetButtonPressed);
-        undoButton.onClick.AddListener(UndoMove);
+        Application.targetFrameRate = 60; // Đặt FPS tối đa
+        QualitySettings.vSyncCount = 0; // Tắt VSync
+        QualitySettings.antiAliasing = 4; // Tăng độ nét
+
+        CreateTubes(numTubes);
+        GenerateBalls(numBalls); // Tạo bóng cho các ống
+        SaveInitialState(); // Lưu trạng thái ban đầu của các ống
+
+        randomLevelButton.onClick.AddListener(RandomLevel); // Thêm sự kiện cho nút ngẫu nhiên
     }
 
-    void Update()
-    {
-        CheckWinCondition();
-        MouseClick();
-    }
 
-    private void InitializeGame()
+    public void CreateTubes(int numTubes)
     {
-        winText.gameObject.SetActive(false);
-        CreateTubes();
-        DistributeBalls();
-        SaveInitialState();
-    }
-
-    # region BallControl
-    private void MouseClick()
-    {
-        // Xử lý input chuột (bạn có thể bổ sung cho touch)
-        if (Input.GetMouseButtonDown(0)) {
-            Vector3 worldPoint = Camera.main.ScreenToWorldPoint(Input.mousePosition);
-            Vector2 touchPos = new Vector2(worldPoint.x, worldPoint.y);
-            RaycastHit2D hit = Physics2D.Raycast(touchPos, Vector2.zero);
-            if (hit.collider != null && hit.collider.tag == "Tube") 
-            {
-                Debug.Log(hit.collider.name);
-                Tube clickedTube = hit.collider.GetComponent<Tube>();
-                if (clickedTube != null) {
-                    Debug.Log("Clicked tube: " + clickedTube.name);
-                    HandleTubeSelection(clickedTube);
-                }
-            }
-            // Nếu nhấn vào ball, lấy tube chứa ball đó (giả sử ball là con của tube)
-            else if (hit.collider.tag == "Ball")
-            {
-                Debug.Log(hit.collider.name);
-                Balls clickedBall = hit.collider.GetComponent<Balls>();
-                if (clickedBall != null)
-                {
-                    Tube parentTube = clickedBall.transform.parent.GetComponent<Tube>();
-                    if (parentTube != null)
-                    {
-                        Debug.Log("Clicked ball's tube: " + parentTube.name);
-                        HandleTubeSelection(parentTube);
-                    }
-                }
-            }
+        for (int i = 0; i < numTubes; i++)
+        {
+            GameObject newTube = Instantiate(tubePrefab, tubePosition[i]);
+            tubes.Add(newTube.GetComponent<Tube>());
         }
     }
-
-    // Xử lý chọn tube và di chuyển ball
-    void HandleTubeSelection(Tube clickedTube) 
+    #region Generate Balls
+    private void GenerateBalls(int numBalls)
     {
-        if (selectedTube == null && !selectedBall) 
+       Debug.Log("Add Ball");
+        List<Sprite> allBalls = new List<Sprite>();
+
+        // Giới hạn số màu được sử dụng
+        numBalls = Mathf.Min(numBalls, listSprite.Count); // Đảm bảo không vượt quá số sprite có sẵn
+        for (int i = 0; i < numBalls; i++)
         {
-            if (clickedTube.listBalls.Count > 0) 
+            Sprite sprite = listSprite[i];
+            for (int j = 0; j < 4; j++) // Mỗi màu có numBalls bóng
             {
-                Debug.Log("Selected tube: " + clickedTube.name);
-                selectedTube = clickedTube;
-                selectedBall = true;
-                Balls ball = clickedTube.listBalls[clickedTube.listBalls.Count - 1];
-                ball.BallMoveFromTube(selectedTube.transform.GetChild(0));
-                // Có thể thêm hiệu ứng highlight tube đã chọn
-            }
-        } 
-            else 
-            {
-                if (selectedTube == clickedTube && selectedBall)
-                {
-                    Balls balls = clickedTube.listBalls[clickedTube.listBalls.Count - 1];
-                    Debug.Log("Selected the same tube");
-                    selectedTube = null;
-                    selectedBall = false;
-                    balls.ReturnBall();
-                    return;
-                }
-
-                AttemptMove(selectedTube, clickedTube);
-                selectedTube = null;
-            }
-    }
-
-    // Thực hiện di chuyển ball giữa các tube
-    void AttemptMove(Tube fromTube, Tube toTube)
-    {
-        // Kiểm tra tube nguồn có ball không
-        if (fromTube.listBalls == null || fromTube.listBalls.Count == 0)
-        {
-            Debug.Log("Cannot move ball from an empty tube");
-            return;
-        }
-
-        // Lấy ball ở đỉnh tube (chỉ số cuối cùng: Count - 1)
-        Balls ball = fromTube.listBalls[fromTube.listBalls.Count - 1];
-        Debug.Log(ball.name);
-
-        // Nếu tube đích đã đầy (>= 4 ball) thì không cho chuyển
-        if (toTube.listBalls.Count >= 4)
-        {
-            Debug.Log("Cannot move ball to a full tube");
-            ball.ReturnBall();
-            selectedBall = false;
-            return;
-        }
-
-        // Nếu tube đích không rỗng, kiểm tra màu của ball trên đỉnh tube đích
-        if (toTube.listBalls.Count > 0)
-        {
-            Balls targetBall = toTube.listBalls[toTube.listBalls.Count - 1];
-            if (targetBall.GetColor() != ball.GetColor())
-            {
-                Debug.Log("Cannot move ball to a tube with different color");
-                ball.ReturnBall();
-                selectedBall = false;
-                return;
+                Debug.Log($"Add Sprite: {sprite.name}");
+                allBalls.Add(sprite);
             }
         }
-
-
-        // Thực hiện di chuyển ball, lớp MoveCommand để lưu lịch suất di chuyển
-        MoveCommand lastMove = new MoveCommand(fromTube, toTube, fromTube.listBalls[fromTube.listBalls.Count - 1]);
-        
-        // Thêm vào lịch sử di chuyển
-        lastMove.Execute();
-        moveHistory.Push(lastMove);
-
-        selectedBall = false;
-        Debug.Log("Done");
-    }
-    # endregion
-
-    # region CreateTube and RandomBall
-    private void CreateTubes()
-    {
-        for (int i = 0; i < tubeCount; i++)
-        {
-            GameObject tubeObject = Instantiate(tubePrefab, tubePositions[i]);
-            Tube tube = tubeObject.GetComponent<Tube>();
-            tube.Setup(this);
-            tubes.Add(tube);
-        }
-    }
-
-    private void DistributeBalls()
-    {
-        Color[] colors = { Color.red, Color.green, Color.blue, Color.yellow};
-        List<Color> allBalls = new List<Color>();
-
-        // Tạo danh sách bóng với số lượng đều nhau (4 quả mỗi màu)
-        foreach (Color color in colors)
-        {
-            for (int i = 0; i < 4; i++)
-            {
-                allBalls.Add(color);
-            }
-        }
-
-        Shuffle(allBalls); // Xáo trộn danh sách bóng
     
-        Debug.Log(tubes.Count);
-        int ballIndex = 0;
+        Debug.Log("Shuffle");
+        Shuffle(allBalls);
+    
+        SetBalls(allBalls, ballPrefab); // Tạo bóng cho các ống
+    }
 
-        for (int i = 0; i < tubes.Count - 2; i++) // Chỉ điền bóng vào 4 ống đầu tiên
+    public void SetBalls(List<Sprite> sprites, GameObject ballPrefab)
+    {
+        // Xóa các ball hiện có
+        foreach (Tube tube in tubes)
         {
+            tube.ClearBalls(); // Xóa tất cả bóng trong ống
+        }
+
+        int index = 0;
+
+        Debug.Log("Generate Balls");
+        for (int i = 0; i < tubes.Count - 2; i++)
+        {
+            Debug.Log("Add Ball");
             for (int j = 0; j < 4; j++)
             {
-                GameObject ballObj = Instantiate(ballPrefab, tubes[i].transform);
-                Balls ball = ballObj.GetComponent<Balls>();
-                ball.ColorSetBalls(allBalls[ballIndex]); // Gán màu sắc cho bóng
-                tubes[i].AddBall(ball);
-                ballIndex++;
+                Debug.Log("Added Ball");
+                GameObject newBall = Instantiate(ballPrefab, tubes[i].bottomPosition.position, Quaternion.identity, tubes[i].transform);
+                Balls ballComponent = newBall.GetComponent<Balls>();
+                ballComponent.SetSprite(sprites[index]);
+                tubes[i].AddBall(ballComponent);
+                index++;
             }
         }
     }
-    # endregion
 
-    # region Feature
-    public void OnResetButtonPressed()
+    public void RestoreInitialState(List<List<Sprite>> initialState, GameObject ballPrefab)
     {
-        feature.ResetLevel(tubes, winText, initialState, moveHistory, ballPrefab);
-    }
-
-    public void UndoMove()
-    {
-        if (moveHistory.Count > 0)
+        // Xóa tất cả bóng hiện có
+        foreach (Tube tube in tubes)
         {
-            ICommand lastCommand = moveHistory.Pop();
-            lastCommand.Undo();
-            selectedBall = false;
-            Debug.Log("Undo move");
+            tube.ClearBalls();
+        }
+
+        // Khôi phục trạng thái ban đầu
+        for (int i = 0; i < tubes.Count && i < initialState.Count; i++)
+        {
+            foreach (Sprite sprite in initialState[i])
+            {
+                GameObject newBall = Instantiate(ballPrefab, tubes[i].bottomPosition.position, Quaternion.identity, tubes[i].transform);
+                Balls ballComponent = newBall.GetComponent<Balls>();
+                ballComponent.SetSprite(sprite);
+                tubes[i].AddBall(ballComponent);
+            }
+        }
+
+        // Cập nhật vị trí bóng
+        foreach (Tube tube in tubes)
+        {
+            tube.UpdateBallPositions();
         }
     }
-    # endregion
 
-    # region Shuffle Method
-    private void Shuffle(List<Color> list)
+    public void Shuffle(List<Sprite> listSprite)
     {
-        for (int i = list.Count - 1; i > 0; i--)
+        for (int i = listSprite.Count - 1; i > 0; i--)
         {
-            int randomIndex = Random.Range(0, i + 1);
-            Color temp = list[i];
-            list[i] = list[randomIndex];
-            list[randomIndex] = temp;
+            int j = Random.Range(0, i + 1);
+            Sprite temp = listSprite[i];
+            listSprite[i] = listSprite[j];
+            listSprite[j] = temp;
         }
     }
-    # endregion
+    #endregion
 
-    # region Save and Load State
-    // Lưu danh sách màu bóng ban đầu
-    private void SaveInitialState()
+    public void SaveInitialState()
     {
         initialState.Clear();
         foreach (Tube tube in tubes)
         {
-            initialState.Add(tube.GetBallColors());
+            initialState.Add(new List<Sprite>(tube.GetBallSprites())); // Sao chép danh sách sprite
+            Debug.Log("Save Initial State: " + initialState[initialState.Count - 1].Count + " balls in tube " + (initialState.Count - 1));
         }
     }
-    #endregion
 
-    # region WindCodition
-    private void CheckWinCondition()
+
+    public void RandomLevel()
     {
+        // Xóa các bóng hiện có
         foreach (Tube tube in tubes)
         {
-            if (!tube.IsSorted())
-            {
-                return;
-            }
+            tube.ClearBalls(); // Xóa tất cả bóng trong ống
         }
-        winText.gameObject.SetActive(true);
+
+        // Tạo lại các bóng ngẫu nhiên
+        GenerateBalls(numBalls); // Tạo bóng cho các ống
+        foreach (Tube tube in tubes)
+        {
+            tube.UpdateBallPositions(); // Cập nhật vị trí bóng
+        }
+        
+        winText.SetActive(false); // Ẩn thông báo thắng
+        SaveInitialState(); // Lưu trạng thái ban đầu của các ống
     }
-    #endregion
+
 }

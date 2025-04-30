@@ -1,98 +1,85 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.EventSystems;
+using UnityEngine.UI;
 
 public class Tube : MonoBehaviour
 {
-    // Danh sách chứa các Ball trong tube.
-    public List<Balls> listBalls = new List<Balls>();
-
-    // Tham chiếu đến LevelBuilder (giả sử LevelBuilder có method SelectTube)
-    private LevelBuilder levelBuilder;
-
-    // Thiết lập tham chiếu đến LevelBuilder
-    public void Setup(LevelBuilder levelBuilder)
-    {
-        this.levelBuilder = levelBuilder;
-    }
-
-
-    // Thêm ball vào tube, trả về true nếu thêm thành công.
-    public bool AddBall(Balls ball)
-    {
-        if (listBalls.Count < 4)
-        {
-            Debug.LogWarning("Thêm ball vào tube");
-            listBalls.Add(ball);
-            // Cập nhật vị trí của ball theo số lượng ball hiện có (bạn có thể tinh chỉnh lại vị trí nếu cần)
-            ball.transform.localPosition = new Vector3(0, listBalls.Count * 2.0f, 0);
-            return true;
-        }
-        return false;
-    }
-
-    // Loại bỏ ball ở đỉnh tube và trả về ball đó.
-    public Balls RemoveBall(Balls ball)
-    {
-        if (listBalls.Count > 0)
-        {
-            Debug.LogWarning("Removing");
-            // Lấy ball cuối cùng trong danh sách
-            ball = listBalls[listBalls.Count - 1];
-            listBalls.RemoveAt(listBalls.Count - 1);
-            //ball.transform.SetParent(null); // Gỡ khỏi tube trước khi di chuyển
-            return ball;
-        }
-        return null;
-    }
-
-    // Phương thức Reset: xóa hết ball hiện có và tạo lại từ danh sách màu được cung cấp.
-    public void SetBalls(List<Color> colors, GameObject ballPrefab)
-    {
-        // Xóa các ball hiện có
-        foreach (Balls ball in listBalls)
-        {
-            Destroy(ball.gameObject);
-        }
-        listBalls.Clear();
-
-        // Tạo lại các ball theo danh sách màu
-        for (int i = 0; i < colors.Count; i++)
-        {
-            GameObject ballObj = Instantiate(ballPrefab, this.transform);
-            Balls ball = ballObj.GetComponent<Balls>();
-            ball.ColorSetBalls(colors[i]); // Gán màu cho ball
-            AddBall(ball);
-        }
-    }
+    public List<Balls> balls = new List<Balls>();
+    public RectTransform topPosition;
+    public RectTransform bottomPosition;
+    public float ballSpace = 1; // Khoảng cách giữa các bóng
 
     
 
-    // Kiểm tra tube đã được sắp xếp (solved) hay chưa:
-    // - Nếu tube trống thì coi là solved.
-    // - Nếu tube có đủ 4 ball và tất cả ball cùng màu thì solved.
-    public bool IsSorted()
+    void Start()
     {
-        if (listBalls.Count == 0)
-            return true;
-        if (listBalls.Count < 4)
-            return false;
-        Color firstColor = listBalls[0].GetColor();
-        foreach (Balls ball in listBalls)
-        {
-            if (ball.GetColor() != firstColor)
-                return false;
-        }
-        return true;
+        UpdateBallPositions();
     }
 
-    // Lấy danh sách các màu của các ball trong tube.
-    public List<Color> GetBallColors()
+
+
+    public void AddBall(Balls ball)
     {
-        List<Color> colors = new List<Color>();
-        foreach (Balls ball in listBalls)
+        balls.Add(ball);
+    }
+
+    public void RemoveBall(Balls ball)
+    {
+        balls.Remove(ball);
+    }
+
+    public Vector3 GetBallPosition(int index)
+    {
+        if (balls.Count == 0) return bottomPosition.position;
+        // Lấy chiều cao thực tế của bóng sau khi co giãn
+        float ballHeight = balls[0].rectTransform.rect.height * balls[0].rectTransform.lossyScale.y;
+        float spacing = ballHeight * ballSpace; // Khoảng cách điều chỉnh theo tỷ lệ co giãn
+        return bottomPosition.position + new Vector3(0, index * spacing, 0);
+    }
+
+    public List<Sprite> GetBallSprites()
+    {
+        List<Sprite> sprites = new List<Sprite>();
+        foreach (var ball in balls)
         {
-            colors.Add(ball.GetColor());
+            sprites.Add(ball.thisSprite);
         }
-        return colors;
+        return sprites;
+    }
+
+    public void UpdateBallPositions()
+    {
+        for (int i = 0; i < balls.Count; i++)
+        {
+            Vector3 pos = GetBallPosition(i);
+            balls[i].rectTransform.position = pos; // Đặt trực tiếp hoặc dùng SetPosition
+        }
+    }
+
+    public void ClearBalls()
+    {
+        foreach (var ball in balls)
+        {
+            Destroy(ball.gameObject);
+        }
+        balls.Clear();
+    }
+
+    public bool IsSorted()
+    {
+        if (balls.Count == 0) return true;
+        if (balls.Count < 4) return false;
+
+        //Sprite firstSprite = balls[0].thisSprite;
+        for (int i = 1; i < balls.Count; i++)
+        {
+            if (balls[0].thisSprite != balls[i].thisSprite)
+            {
+                Debug.Log("Tube is not sorted!");
+                return false;
+            }
+        }
+        return true;
     }
 }
