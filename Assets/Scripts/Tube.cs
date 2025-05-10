@@ -18,17 +18,19 @@ public class Tube : MonoBehaviour
     }
 
 
-
+    // Add ball to the tube
     public void AddBall(Balls ball)
     {
         balls.Add(ball);
     }
 
+    // Remove ball from the tube
     public void RemoveBall(Balls ball)
     {
         balls.Remove(ball);
     }
 
+    // Get the number of balls in the tube
     public Vector3 GetBallPosition(int index)
     {
         if (balls.Count == 0) return bottomPosition.position;
@@ -38,6 +40,7 @@ public class Tube : MonoBehaviour
         return bottomPosition.position + new Vector3(0, index * spacing, 0);
     }
 
+    // Get sprite of the balls in the tube
     public List<Sprite> GetBallSprites()
     {
         List<Sprite> sprites = new List<Sprite>();
@@ -48,6 +51,7 @@ public class Tube : MonoBehaviour
         return sprites;
     }
 
+    // Update the position of all balls in the tube
     public void UpdateBallPositions()
     {
         for (int i = 0; i < balls.Count; i++)
@@ -57,6 +61,7 @@ public class Tube : MonoBehaviour
         }
     }
 
+    // Remove all balls from the tube
     public void ClearBalls()
     {
         foreach (var ball in balls)
@@ -66,6 +71,7 @@ public class Tube : MonoBehaviour
         balls.Clear();
     }
 
+    // Check condition to win the game
     public bool IsSorted()
     {
         if (balls.Count == 0) return true;
